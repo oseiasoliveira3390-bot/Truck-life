@@ -1,0 +1,10 @@
+
+{
+  "appId": "com.trucklife.sim",
+  "appName": "Truck Life Simulator",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}

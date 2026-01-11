@@ -20,18 +20,18 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, player }) =>
   ];
 
   return (
-    <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col">
-      <div className="p-6 border-b border-slate-800">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold text-lg text-white">
+    <aside className="w-16 lg:w-64 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0">
+      <div className="p-3 lg:p-6 border-b border-slate-800">
+        <div className="flex items-center gap-3 mb-4 overflow-hidden">
+          <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold text-lg text-white shrink-0">
             {player.name[0]}
           </div>
-          <div>
+          <div className="hidden lg:block truncate">
             <p className="font-bold text-sm leading-tight truncate">{player.name}</p>
             <p className="text-xs text-blue-400 font-medium">Level {player.level}</p>
           </div>
         </div>
-        <div className="space-y-2">
+        <div className="hidden lg:block space-y-2">
           <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
             <div 
               className="bg-blue-500 h-full transition-all duration-500" 
@@ -40,32 +40,33 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, player }) =>
           </div>
           <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex justify-between">
             <span>XP: {player.xp % 1000}/1000</span>
-            <span className="text-slate-300">License: {player.license}</span>
+            <span className="text-slate-300">{player.license}</span>
           </p>
         </div>
       </div>
 
-      <nav className="flex-1 p-4 space-y-1">
+      <nav className="flex-1 p-2 lg:p-4 space-y-1 overflow-y-auto overflow-x-hidden no-scrollbar">
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`w-full flex items-center justify-center lg:justify-start gap-3 p-2 lg:px-3 lg:py-2.5 rounded-lg transition-colors ${
               activeTab === tab.id 
               ? 'bg-blue-600/10 text-blue-400 border border-blue-600/20' 
               : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
             }`}
+            title={tab.label}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-6 h-6 lg:w-5 lg:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={tab.icon} />
             </svg>
-            {tab.label}
+            <span className="hidden lg:block text-sm font-medium">{tab.label}</span>
           </button>
         ))}
       </nav>
 
-      <div className="p-6 text-[10px] text-slate-600 font-bold uppercase tracking-tighter">
-        Truck Life v1.0.4 - Alpha Build
+      <div className="p-4 hidden lg:block text-[10px] text-slate-600 font-bold uppercase tracking-tighter">
+        Truck Life v1.0.4 - Mobile
       </div>
     </aside>
   );

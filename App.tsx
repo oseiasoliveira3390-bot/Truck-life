@@ -45,7 +45,13 @@ const App: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'dash' | 'jobs' | 'market' | 'licenses' | 'fleet' | 'companies' | 'bank'>('dash');
 
-  // Initialization
+  // Haptic feedback utility
+  const vibrate = (pattern: number | number[] = 10) => {
+    if ('vibrate' in navigator) {
+      navigator.vibrate(pattern);
+    }
+  };
+
   useEffect(() => {
     const initialJobs = Array.from({ length: 10 }, () => generateJob(1));
     setGameState(prev => ({ ...prev, availableJobs: initialJobs }));
@@ -63,13 +69,9 @@ const App: React.FC = () => {
     if (!model) return;
     const basePrice = isUsed ? model.basePrice * 0.6 : model.basePrice;
     
-    if (!financed && gameState.player.money < basePrice) {
-      addLog(`Not enough money to buy ${model.brand} ${model.model}.`);
-      return;
-    }
-
     const downPayment = financed ? basePrice * 0.1 : basePrice;
     if (gameState.player.money < downPayment) {
+      vibrate([50, 50, 50]);
       addLog(`Not enough money for the ${formatMoney(downPayment)} down payment.`);
       return;
     }
@@ -87,11 +89,11 @@ const App: React.FC = () => {
     let newLoans = [...gameState.player.loans];
     if (financed) {
       const loanAmount = basePrice - downPayment;
-      const loan = createLoan(loanAmount, 0.12, 24); // 12% annual, 24 months
+      const loan = createLoan(loanAmount, 0.12, 24);
       newLoans.push(loan);
-      addLog(`Financed ${model.brand} with ${formatMoney(downPayment)} down. Loan: ${formatMoney(loanAmount)}.`);
     }
 
+    vibrate(20);
     setGameState(prev => ({
       ...prev,
       player: {
@@ -103,53 +105,42 @@ const App: React.FC = () => {
       },
       trucks: [...prev.trucks, newTruck]
     }));
-    
-    if (!financed) {
-      addLog(`Purchased ${model.brand} ${model.model} for ${formatMoney(basePrice)}.`);
-    }
+    addLog(financed ? `Financed ${model.brand} ${model.model}!` : `Bought ${model.brand} ${model.model}!`);
   };
 
   const handleAcceptJob = (jobId: string) => {
     const job = gameState.availableJobs.find(j => j.id === jobId);
-    if (!job) return;
-
-    if (gameState.player.license < job.requiredLicense) {
-      addLog(`Your license (${gameState.player.license}) is insufficient for this job (${job.requiredLicense}).`);
+    if (!job || gameState.player.license < job.requiredLicense || !gameState.player.currentTruckId) {
+      vibrate([30, 30]);
       return;
     }
 
-    if (!gameState.player.currentTruckId) {
-      addLog(`You need a truck to accept a job.`);
-      return;
-    }
-
+    vibrate(15);
     setGameState(prev => ({
       ...prev,
       player: { ...prev.player, activeJobId: jobId },
       availableJobs: prev.availableJobs.filter(j => j.id !== jobId)
     }));
-    addLog(`Accepted delivery of ${job.cargo} to ${job.to}. Distance: ${job.distance.toFixed(1)}km.`);
+    addLog(`Accepted job: ${job.cargo} to ${job.to}.`);
     setActiveTab('dash');
   };
 
   const handleStartTrip = () => {
     if (!gameState.player.activeJobId || !gameState.player.currentTruckId) return;
+    vibrate(50);
     setGameState(prev => ({ ...prev, isDriving: true, drivingProgress: 0 }));
   };
 
   const handleFinishTrip = () => {
+    vibrate([20, 100, 20]);
     setGameState(prev => {
       const currentJob = prev.player.activeJobId ? (prev.availableJobs.find(j => j.id === prev.player.activeJobId) || 
         (gameState.availableJobs.find(j => j.id === prev.player.activeJobId))) : null;
 
       if (!currentJob) return { ...prev, isDriving: false, drivingProgress: 0 };
 
-      let finalPayout = currentJob.payout;
-      let finalXP = currentJob.distance * 5;
-      
-      const newMoney = prev.player.money + finalPayout;
-      const newXp = prev.player.xp + finalXP;
-      const newLevel = Math.floor(newXp / 1000) + 1;
+      const payout = currentJob.payout;
+      const xpGain = currentJob.distance * 5;
 
       return {
         ...prev,
@@ -157,123 +148,84 @@ const App: React.FC = () => {
         drivingProgress: 0,
         player: {
           ...prev.player,
-          money: newMoney,
-          xp: newXp,
-          level: newLevel,
+          money: prev.player.money + payout,
+          xp: prev.player.xp + xpGain,
+          level: Math.floor((prev.player.xp + xpGain) / 1000) + 1,
           activeJobId: null,
           history: { ...prev.player.history, deliveries: prev.player.history.deliveries + 1 }
         },
-        gameLog: [`Successfully delivered ${currentJob.cargo}! Earned ${formatMoney(finalPayout)}`, ...prev.gameLog]
+        gameLog: [`Delivery complete! +${formatMoney(payout)}`, ...prev.gameLog]
       };
     });
   };
 
   const handleLicenseUpgrade = (target: LicenseCategory) => {
     if (gameState.player.money >= 5000) {
+       vibrate([20, 50, 100]);
        setGameState(prev => ({
          ...prev,
          player: { ...prev.player, money: prev.player.money - 5000, license: target }
        }));
        addLog(`License upgraded to ${target}!`);
     } else {
-       addLog(`Not enough funds for ${target} license exam.`);
+      vibrate([50, 50]);
     }
   };
 
-  // Process loan payments periodically (Simulating 1 "Month" every 5 minutes of real time or after each delivery)
-  useEffect(() => {
-    const loanInterval = setInterval(() => {
-      setGameState(prev => {
-        if (prev.player.loans.length === 0) return prev;
-        
-        let totalPayment = 0;
-        const updatedLoans = prev.player.loans.map(loan => {
-          if (loan.remainingBalance > 0) {
-            totalPayment += loan.monthlyPayment;
-            return {
-              ...loan,
-              remainingBalance: Math.max(0, loan.remainingBalance - loan.monthlyPayment),
-              paidMonths: loan.paidMonths + 1
-            };
-          }
-          return loan;
-        }).filter(loan => loan.remainingBalance > 0);
-
-        if (totalPayment > 0) {
-          return {
-            ...prev,
-            player: {
-              ...prev.player,
-              money: prev.player.money - totalPayment,
-              loans: updatedLoans
-            },
-            gameLog: [`Recurring loan payment of ${formatMoney(totalPayment)} deducted.`, ...prev.gameLog]
-          };
-        }
-        return prev;
-      });
-    }, 120000); // Every 2 minutes for demo purposes
-
-    return () => clearInterval(loanInterval);
-  }, []);
-
   useEffect(() => {
     if (!gameState.isDriving) return;
-
     const interval = setInterval(() => {
       setGameState(prev => {
         if (prev.drivingProgress >= 1) {
           clearInterval(interval);
           return prev;
         }
-        const speed = 0.05; 
-        const nextProgress = prev.drivingProgress + speed;
-        return { ...prev, drivingProgress: nextProgress >= 1 ? 1 : nextProgress };
+        return { ...prev, drivingProgress: prev.drivingProgress + 0.05 };
       });
     }, 500);
-
     return () => clearInterval(interval);
-  }, [gameState.isDriving, gameState.player.activeJobId]);
+  }, [gameState.isDriving]);
 
   return (
-    <div className="flex h-screen w-full bg-slate-950 text-slate-200 overflow-hidden">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} player={gameState.player} />
+    <div className="flex h-screen w-full bg-slate-950 text-slate-200 overflow-hidden select-none">
+      <Sidebar activeTab={activeTab} setActiveTab={(tab) => { vibrate(5); setActiveTab(tab); }} player={gameState.player} />
 
       <main className="flex-1 flex flex-col relative overflow-hidden">
-        <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50 backdrop-blur-sm z-10">
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold tracking-tight text-blue-400">TRUCK LIFE <span className="text-slate-100">SIMULATOR</span></h1>
-            <div className="h-4 w-px bg-slate-700 mx-2"></div>
-            <span className="text-sm font-medium text-slate-400 uppercase tracking-widest">{activeTab}</span>
+        <header className="h-16 border-b border-slate-800 flex items-center justify-between px-4 lg:px-6 bg-slate-900/50 backdrop-blur-sm z-10">
+          <div className="flex items-center gap-2 lg:gap-4">
+            <h1 className="text-sm lg:text-xl font-bold tracking-tight text-blue-400">TRUCK LIFE</h1>
+            <span className="hidden lg:block h-4 w-px bg-slate-700 mx-2"></span>
+            <span className="text-[10px] lg:text-sm font-medium text-slate-400 uppercase tracking-widest">{activeTab}</span>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3 lg:gap-6">
             <div className="text-right">
-              <p className="text-xs text-slate-500 font-bold uppercase">Balance</p>
-              <p className="text-lg font-bold text-emerald-400 mono leading-none">{formatMoney(gameState.player.money)}</p>
+              <p className="text-[8px] lg:text-xs text-slate-500 font-bold uppercase">Balance</p>
+              <p className="text-xs lg:text-lg font-bold text-emerald-400 mono leading-none">{formatMoney(gameState.player.money)}</p>
             </div>
-            <div className="text-right">
-              <p className="text-xs text-slate-500 font-bold uppercase">Reputation</p>
-              <p className="text-lg font-bold text-blue-400 mono leading-none">{gameState.player.reputation}%</p>
+            <div className="hidden sm:block text-right">
+              <p className="text-[8px] lg:text-xs text-slate-500 font-bold uppercase">Reputation</p>
+              <p className="text-xs lg:text-lg font-bold text-blue-400 mono leading-none">{gameState.player.reputation}%</p>
             </div>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-3 lg:p-6 pb-20 lg:pb-6">
           {activeTab === 'dash' && <Dashboard state={gameState} onStart={handleStartTrip} onFinish={handleFinishTrip} />}
           {activeTab === 'jobs' && <JobBoard jobs={gameState.availableJobs} onAccept={handleAcceptJob} activeJobId={gameState.player.activeJobId} license={gameState.player.license} />}
           {activeTab === 'market' && <Market onBuy={handleBuyTruck} playerMoney={gameState.player.money} companies={gameState.companies} />}
           {activeTab === 'licenses' && <LicenseCenter player={gameState.player} onUpgrade={handleLicenseUpgrade} />}
-          {activeTab === 'fleet' && <FleetManager trucks={gameState.trucks.filter(t => t.ownerId === 'player')} currentTruckId={gameState.player.currentTruckId} onSelect={(id) => setGameState(prev => ({ ...prev, player: { ...prev.player, currentTruckId: id } }))} />}
+          {activeTab === 'fleet' && <FleetManager trucks={gameState.trucks.filter(t => t.ownerId === 'player')} currentTruckId={gameState.player.currentTruckId} onSelect={(id) => { vibrate(10); setGameState(prev => ({ ...prev, player: { ...prev.player, currentTruckId: id } })); }} />}
           {activeTab === 'companies' && <CompaniesInfo companies={gameState.companies} />}
           {activeTab === 'bank' && <Bank player={gameState.player} onTakeLoan={(amt, term) => {
+            vibrate(30);
             const loan = createLoan(amt, 0.08, term);
             setGameState(prev => ({ ...prev, player: { ...prev.player, money: prev.player.money + amt, loans: [...prev.player.loans, loan] }}));
-            addLog(`Took out a bank loan for ${formatMoney(amt)}.`);
+            addLog(`Loan accepted: ${formatMoney(amt)}.`);
           }} />}
         </div>
 
-        <footer className="h-12 border-t border-slate-800 bg-slate-900 flex items-center px-6 text-xs text-slate-400 mono">
-          <span className="mr-2 text-slate-500">[LOG]:</span> {gameState.gameLog[0]}
+        <footer className="h-10 border-t border-slate-800 bg-slate-900 flex items-center px-4 text-[10px] text-slate-400 mono shrink-0">
+          <span className="mr-2 text-slate-500">[LOG]:</span> <span className="truncate">{gameState.gameLog[0]}</span>
         </footer>
       </main>
     </div>
